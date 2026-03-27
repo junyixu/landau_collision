@@ -1,0 +1,9 @@
+const V_MIN, V_MAX = -5.0, 5.0
+const P_DEG = 2                # B-spline 多项式阶数
+const K_REG = 1                # 内部结点正则性
+const N_ELEM = 10              # 每维元素数
+const N_PARTICLES = 10_000       # 粒子数 (O(N²) 碰撞)
+const σ₁, σ₂ = 1.0, 0.3       # 各向异性高斯: v₁ ~ N(0,σ₁²), v₂ ~ N(0,σ₂²)
+const DT = 0.005
+const N_STEPS = 100
+const N_QUAD = 6               # 积分点数/维
