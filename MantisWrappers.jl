@@ -45,14 +45,13 @@ function locate_particle(v1, v2)
 end
 
 
-evaluate_basis(elem_id, xi) = Forms.evaluate(X⁰, elem_id, xi)
+evaluate(fs::Forms.AbstractFormSpace, elem_id, xi) = Forms.evaluate(fs, elem_id, xi)
+evaluate(ff::Forms.AbstractFormField, e, xi) = Forms.evaluate(ff, e, xi)
 
 evaluate_basis_derivatives(elem_id, xi, nderivatives) =
     Forms._evaluate_form_in_canonical_coordinates(X⁰, elem_id, xi, nderivatives)
 
 build_field(coeffs) = Forms.build_form_field(X⁰, coeffs)
-
-evaluate_field(field, e, xi) = Forms.evaluate(field, e, xi)
 
 element_measure(e) = Geometry.get_element_measure(geo_2d, e)
 
@@ -62,7 +61,7 @@ make_point(ξ1, ξ2) = Points.CartesianPoints(([ξ1], [ξ2]))
 
 export X⁰, M_mat, M_lu, n_dofs, n_elements, geo_2d, bp
 export locate_particle, make_point
-export evaluate_basis, evaluate_basis_derivatives, build_field, evaluate_field
+export evaluate, evaluate_basis_derivatives, build_field
 export element_measure, quadrature_nodes_weights
 
 end # module

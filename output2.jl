@@ -21,7 +21,7 @@ function l2_project!(f_coeffs, v_parts, w_parts)
 
         # φ_k(v_α): evaluate all basis functions at particle position
         xi = make_point(loc.ξ1, loc.ξ2)
-        evals, indices = evaluate_basis(loc.elem_id, xi)
+        evals, indices = evaluate(X⁰, loc.elem_id, xi)
 
         # b_k += w_α · φ_k(v_α)
         for (j, gidx) in enumerate(indices[1])
@@ -39,7 +39,7 @@ function compute_entropy(coeffs)
     S = 0.0
     for e in 1:n_elements
         jac = element_measure(e)       # |J_e|
-        fv, _ = evaluate_field(field, e, xi_q)
+        fv, _ = evaluate(field, e, xi_q)
         for q in eachindex(wq)
             f_val = fv[1][q]           # f_s(v_q^e)
             f2 = f_val^2
@@ -60,8 +60,8 @@ function compute_r!(r, coeffs)
     xi_q, wq = quadrature_nodes_weights()
     for e in 1:n_elements
         jac = element_measure(e)
-        fv, _ = evaluate_field(field, e, xi_q)          # f_s(v_q^e)
-        evals, indices = evaluate_basis(e, xi_q)         # φ_i(v_q^e)
+        fv, _ = evaluate(field, e, xi_q)                  # f_s(v_q^e)
+        evals, indices = evaluate(X⁰, e, xi_q)           # φ_i(v_q^e)
         for q in eachindex(wq)
             f_val = fv[1][q]
             integrand = f_val > 1e-30 ? (1 + log(f_val)) : 0.0
