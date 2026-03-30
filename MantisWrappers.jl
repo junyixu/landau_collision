@@ -12,12 +12,12 @@ const B_1d = FunctionSpaces.BSplineSpace(geo_1d, P_DEG, K_REG)
 const TP = FunctionSpaces.TensorProductSpace((B_1d, B_1d), Geometry.CartesianGeometry)
 const X⁰ = Forms.FormSpace(0, TP, "f")
 
-const n_dofs = Forms.get_num_basis(X⁰)
+const n_dofs = Forms.get_num_basis(X⁰) # degree of freedom = number of basis functions
 const geo_2d = Forms.get_geometry(X⁰)
 const n_elements = Geometry.get_num_elements(geo_2d)
 const lin_indices = LinearIndices((N_ELEM, N_ELEM))
 
-const M_mat, M_lu = let
+const M_lu = let
     qrule = Quadrature.tensor_product_rule((P_DEG + 1, P_DEG + 1), Quadrature.gauss_legendre)
     dΩ = Quadrature.StandardQuadrature(qrule, n_elements)
     f_zero = Forms.AnalyticalFormField(0, x -> [zeros(size(x, 1))], geo_2d, "0")
@@ -27,12 +27,10 @@ const M_mat, M_lu = let
     M_expr = ∫(v⁰ ∧ ★(u⁰), dΩ)
     M_wf = Assemblers.WeakForm(((M_expr,),), ((0,),), wfi)
     M, _ = Assemblers.assemble(M_wf)
-    M, lu(M)
+    lu(M)
 end
 
 const _qrule_integrate = Quadrature.tensor_product_rule((N_QUAD, N_QUAD), Quadrature.gauss_legendre)
-const xi_q = _qrule_integrate.nodes
-const wq = _qrule_integrate.weights
 
 struct ParticleLocation
     elem_id::Int
@@ -52,8 +50,8 @@ function locate_particle(v1, v2)
     return ParticleLocation(lin_indices[i, j], Points.CartesianPoints(([ξ1], [ξ2])), h1, h2)
 end
 
-evaluate(fs::Forms.AbstractFormSpace, elem_id::Int, xi=xi_q) = Forms.evaluate(fs, elem_id, xi)
-evaluate(ff::Forms.AbstractFormField, e::Int, xi=xi_q) = Forms.evaluate(ff, e, xi)
+evaluate(fs::Forms.AbstractFormSpace, elem_id::Int) = Forms.evaluate(fs, elem_id, _qrule_integrate.nodes)
+evaluate(ff::Forms.AbstractFormField, e::Int) = Forms.evaluate(ff, e, _qrule_integrate.nodes)
 evaluate(fs::Forms.AbstractFormSpace, loc::ParticleLocation) = Forms.evaluate(fs, loc.elem_id, loc.xi)
 
 evaluate_basis_derivatives(elem_id::Int, xi, nderivatives) =
@@ -66,9 +64,11 @@ build_field(coeffs) = Forms.build_form_field(X⁰, coeffs)
 element_measure(e) = Geometry.get_element_measure(geo_2d, e)
 const jac = element_measure(1)
 
-export X⁰, M_mat, M_lu, n_dofs, n_elements, geo_2d, bp
-export ParticleLocation, locate_particle
-export evaluate, evaluate_basis_derivatives, build_field
-export element_measure, xi_q, wq, jac
+export n_dofs, M_lu
+export evaluate, build_field
+
+include("functions.jl")
+
+export compute_entropy, compute_r!, compute_G!, compute_collision!, l2_project!
 
 end # module

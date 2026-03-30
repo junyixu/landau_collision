@@ -15,35 +15,33 @@ function l2_project!(f_coeffs, v_parts, w_parts)
     # M f = b
     f_coeffs .= M_lu \ rhs
 end
-function compute_entropy(coeffs)
-    field = build_field(coeffs)        # f_s(v) = Σ_i f_i φ_i(v)
+function compute_entropy(field::Forms.FormField)
     S = 0.0
     for e in 1:n_elements
         jac = element_measure(e)       # |J_e|
         fv, _ = evaluate(field, e)
-        for q in eachindex(wq)
+        for q in eachindex(_qrule_integrate.weights)
             f_val = fv[1][q]           # f_s(v_q^e)
             if f_val > 1e-30
                 # S -= f_s log(f_s) · w_q · |J_e|
-                S -= f_val * log(f_val) * wq[q] * jac
+                S -= f_val * log(f_val) * _qrule_integrate.weights[q] * jac
             end
         end
     end
     return S
 end
-function compute_r!(r, coeffs)
+function compute_r!(r, field::Forms.FormField)
     fill!(r, 0.0)
-    field = build_field(coeffs)
     for e in 1:n_elements
         jac = element_measure(e)
         fv, _ = evaluate(field, e)                         # f_s(v_q^e)
         evals, indices = evaluate(X⁰, e)                  # φ_i(v_q^e)
-        for q in eachindex(wq)
+        for q in eachindex(_qrule_integrate.weights)
             f_val = fv[1][q]
             integrand = f_val > 1e-30 ? (1 + log(f_val)) : 0.0
             for (j, gidx) in enumerate(indices[1])
                 # r_i += φ_i(v_q) · (1 + log f_s(v_q)) · w_q · |J_e|
-                r[gidx] += integrand * evals[1][q, j] * wq[q] * jac
+                r[gidx] += integrand * evals[1][q, j] * _qrule_integrate.weights[q] * jac
             end
         end
     end
