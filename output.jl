@@ -20,8 +20,7 @@ function l2_project!(f_coeffs, v_parts, w_parts)
         isnothing(loc) && continue
 
         # φ_k(v_α): evaluate all basis functions at particle position
-        xi = make_point(loc.ξ1, loc.ξ2)
-        evals, indices = evaluate(X⁰, loc.elem_id, xi)
+        evals, indices = evaluate(X⁰, loc)
 
         # b_k += w_α · φ_k(v_α)
         for (j, gidx) in enumerate(indices[1])
@@ -35,11 +34,10 @@ f_coeffs = zeros(n_dofs)
 l2_project!(f_coeffs, v_particles, w_particles)
 function compute_entropy(coeffs)
     field = build_field(coeffs)        # f_s(v) = Σ_i f_i φ_i(v)
-    xi_q, wq = quadrature_nodes_weights()
     S = 0.0
     for e in 1:n_elements
         jac = element_measure(e)       # |J_e|
-        fv, _ = evaluate(field, e, xi_q)
+        fv, _ = evaluate(field, e)
         for q in eachindex(wq)
             f_val = fv[1][q]           # f_s(v_q^e)
             if f_val > 1e-30
@@ -56,11 +54,10 @@ println("Initial entropy S_h = $(entropy_history[end])")
 function compute_r!(r, coeffs)
     fill!(r, 0.0)
     field = build_field(coeffs)
-    xi_q, wq = quadrature_nodes_weights()
     for e in 1:n_elements
         jac = element_measure(e)
-        fv, _ = evaluate(field, e, xi_q)                  # f_s(v_q^e)
-        evals, indices = evaluate(X⁰, e, xi_q)           # φ_i(v_q^e)
+        fv, _ = evaluate(field, e)                         # f_s(v_q^e)
+        evals, indices = evaluate(X⁰, e)                  # φ_i(v_q^e)
         for q in eachindex(wq)
             f_val = fv[1][q]
             integrand = f_val > 1e-30 ? (1 + log(f_val)) : 0.0
@@ -76,10 +73,9 @@ function compute_G!(G, v_parts, L_vec)
     for α in axes(v_parts, 1)
         loc = locate_particle(v_parts[α, 1], v_parts[α, 2])
         isnothing(loc) && continue
-        xi = make_point(loc.ξ1, loc.ξ2)
 
         # nderivatives=1 → local_basis[2][d][1] = ∂φ/∂ξ_d
-        local_basis, indices = evaluate_basis_derivatives(loc.elem_id, xi, 1)
+        local_basis, indices = evaluate_basis_derivatives(loc, 1)
         dφ_dξ1 = local_basis[2][1][1]   # (n_pts × n_basis)
         dφ_dξ2 = local_basis[2][2][1]
 

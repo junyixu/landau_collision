@@ -31,6 +31,15 @@ const M_mat, M_lu = let
 end
 
 const _qrule_integrate = Quadrature.tensor_product_rule((N_QUAD, N_QUAD), Quadrature.gauss_legendre)
+const xi_q = _qrule_integrate.nodes
+const wq = _qrule_integrate.weights
+
+struct ParticleLocation
+    elem_id::Int
+    xi::Points.CartesianPoints
+    h1::Float64
+    h2::Float64
+end
 
 function locate_particle(v1, v2)
     (v1 <= V_MIN || v1 >= V_MAX || v2 <= V_MIN || v2 >= V_MAX) && return nothing
@@ -40,27 +49,25 @@ function locate_particle(v1, v2)
     h2 = bp[j+1] - bp[j]
     ξ1 = (v1 - bp[i]) / h1
     ξ2 = (v2 - bp[j]) / h2
-    return (; elem_id=lin_indices[i, j], ξ1, ξ2, h1, h2)
+    return ParticleLocation(lin_indices[i, j], Points.CartesianPoints(([ξ1], [ξ2])), h1, h2)
 end
 
+evaluate(fs::Forms.AbstractFormSpace, elem_id::Int, xi=xi_q) = Forms.evaluate(fs, elem_id, xi)
+evaluate(ff::Forms.AbstractFormField, e::Int, xi=xi_q) = Forms.evaluate(ff, e, xi)
+evaluate(fs::Forms.AbstractFormSpace, loc::ParticleLocation) = Forms.evaluate(fs, loc.elem_id, loc.xi)
 
-evaluate(fs::Forms.AbstractFormSpace, elem_id, xi) = Forms.evaluate(fs, elem_id, xi)
-evaluate(ff::Forms.AbstractFormField, e, xi) = Forms.evaluate(ff, e, xi)
-
-evaluate_basis_derivatives(elem_id, xi, nderivatives) =
+evaluate_basis_derivatives(elem_id::Int, xi, nderivatives) =
     Forms._evaluate_form_in_canonical_coordinates(X⁰, elem_id, xi, nderivatives)
+evaluate_basis_derivatives(loc::ParticleLocation, nderivatives) =
+    Forms._evaluate_form_in_canonical_coordinates(X⁰, loc.elem_id, loc.xi, nderivatives)
 
 build_field(coeffs) = Forms.build_form_field(X⁰, coeffs)
 
 element_measure(e) = Geometry.get_element_measure(geo_2d, e)
 
-quadrature_nodes_weights() = (_qrule_integrate.nodes, _qrule_integrate.weights)
-
-make_point(ξ1, ξ2) = Points.CartesianPoints(([ξ1], [ξ2]))
-
 export X⁰, M_mat, M_lu, n_dofs, n_elements, geo_2d, bp
-export locate_particle, make_point
+export ParticleLocation, locate_particle
 export evaluate, evaluate_basis_derivatives, build_field
-export element_measure, quadrature_nodes_weights
+export element_measure, xi_q, wq
 
 end # module
