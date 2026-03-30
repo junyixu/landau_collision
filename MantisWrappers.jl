@@ -42,7 +42,7 @@ struct ParticleLocation
 end
 
 function locate_particle(v1, v2)
-    (v1 <= V_MIN || v1 >= V_MAX || v2 <= V_MIN || v2 >= V_MAX) && return nothing
+    (v1 <= V_MIN || v1 >= V_MAX || v2 <= V_MIN || v2 >= V_MAX) && return nothing # TODO: type instable
     i = searchsortedlast(bp, v1)
     j = searchsortedlast(bp, v2)
     h1 = bp[i+1] - bp[i]
@@ -64,10 +64,11 @@ evaluate_basis_derivatives(loc::ParticleLocation, nderivatives) =
 build_field(coeffs) = Forms.build_form_field(X⁰, coeffs)
 
 element_measure(e) = Geometry.get_element_measure(geo_2d, e)
+const jac = element_measure(1)
 
 export X⁰, M_mat, M_lu, n_dofs, n_elements, geo_2d, bp
 export ParticleLocation, locate_particle
 export evaluate, evaluate_basis_derivatives, build_field
-export element_measure, xi_q, wq
+export element_measure, xi_q, wq, jac
 
 end # module
