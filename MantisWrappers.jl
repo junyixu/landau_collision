@@ -2,11 +2,10 @@ module MantisWrappers
 
 using Mantis
 using LinearAlgebra
-using SparseArrays
 
 include("parameters.jl")
 
-const bp = collect(LinRange(V_MIN, V_MAX, N_ELEM + 1))
+const bp = LinRange(V_MIN, V_MAX, N_ELEM + 1)
 
 const geo_1d = Geometry.CartesianGeometry((bp,))
 const B_1d = FunctionSpaces.BSplineSpace(geo_1d, P_DEG, K_REG)
