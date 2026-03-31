@@ -1,0 +1,16 @@
+# GNU Global tags
+GPATH
+GRTAGS
+GTAGS
+
+# ctags
+tags
+
+# Claude
+.claude-commands.log
+
+# Julia
+Manifest.toml
+
+# Output
+*.png

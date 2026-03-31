@@ -1,3 +1,7 @@
+#! /usr/bin/env -S julia --color=yes --startup-file=no
+# -*- coding: utf-8 -*-
+# vim:fenc=utf-8
+
 include("MantisWrappers.jl")
 using .MantisWrappers
 using GLMakie
