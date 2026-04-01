@@ -5,7 +5,7 @@ function l2_project!(f_coeffs, v_parts, w_parts)
         isnothing(loc) && continue
 
         # φ_k(v_α): evaluate all basis functions at particle position
-        evals, indices = evaluate(X⁰, loc)
+        evals, indices = evaluate(loc)
 
         # b_k += w_α · φ_k(v_α)
         for (j, gidx) in enumerate(indices[1])
@@ -35,7 +35,7 @@ function compute_r!(r, field::Forms.FormField)
     for e in 1:n_elements
         jac = element_measure(e)
         fv, _ = evaluate(field, e)                         # f_s(v_q^e)
-        evals, indices = evaluate(X⁰, e)                  # φ_i(v_q^e)
+        evals, indices = evaluate(e)                  # φ_i(v_q^e)
         for q in eachindex(_qrule_integrate.weights)
             f_val = fv[1][q]
             integrand = f_val > 1e-30 ? (1 + log(f_val)) : 0.0

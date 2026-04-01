@@ -83,9 +83,13 @@ end
 #   - evaluate(FormField, elem_id)       → field values at quadrature nodes
 #   - evaluate(FormSpace, ParticleLocation) → basis values at a single particle position
 
-evaluate(fs::Forms.AbstractFormSpace, elem_id::Int) = Forms.evaluate(fs, elem_id, _qrule_integrate.nodes)
 evaluate(ff::Forms.AbstractFormField, e::Int) = Forms.evaluate(ff, e, _qrule_integrate.nodes)
+
+evaluate(fs::Forms.AbstractFormSpace, elem_id::Int) = Forms.evaluate(fs, elem_id, _qrule_integrate.nodes)
+evaluate(e::Int) =evaluate(X⁰,e)
+
 evaluate(fs::Forms.AbstractFormSpace, loc::ParticleLocation) = Forms.evaluate(fs, loc.elem_id, loc.xi)
+evaluate(loc::ParticleLocation) = evaluate(X⁰, loc)
 
 # Evaluate basis function derivatives in canonical coordinates.
 # Returns local_basis[deriv_order+1][deriv_index][component][point, basis].
