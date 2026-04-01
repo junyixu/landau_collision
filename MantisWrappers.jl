@@ -89,6 +89,7 @@ evaluate(fs::Forms.AbstractFormSpace, elem_id::Int) = Forms.evaluate(fs, elem_id
 evaluate(e::Int) =evaluate(X⁰,e)
 
 evaluate(fs::Forms.AbstractFormSpace, loc::ParticleLocation) = Forms.evaluate(fs, loc.elem_id, loc.xi)
+evaluate(ff::Forms.AbstractFormField, loc::ParticleLocation) = Forms.evaluate(ff, loc.elem_id, loc.xi)
 evaluate(loc::ParticleLocation) = evaluate(X⁰, loc)
 
 # Evaluate basis function derivatives in canonical coordinates.
@@ -109,8 +110,8 @@ build_field(coeffs) = Forms.build_form_field(X⁰, coeffs)
 element_measure(e) = Geometry.get_element_measure(geo_2d, e)
 const jac = element_measure(1)
 
-export n_dofs, M_lu
-export evaluate, build_field
+export n_dofs, n_elements, M_lu
+export locate_particle, evaluate, build_field
 
 # ## Physics routines
 #
