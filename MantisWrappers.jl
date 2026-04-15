@@ -27,7 +27,7 @@ begin # Geometry and function spaces
     const n_dofs = Forms.get_num_basis(X⁰) # number of basis functions (degrees of freedom)
     const geo_2d = Forms.get_geometry(X⁰)
     const n_elements = Geometry.get_num_elements(geo_2d)
-    const lin_indices = LinearIndices((N_ELEM, N_ELEM))
+    const lin_indices = LinearIndices((length(bp)-1, length(bp)-1))
 end
 
 # ## Mass matrix assembly
