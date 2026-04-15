@@ -16,7 +16,7 @@ include("parameters.jl")
 # We build a 2D tensor-product B-spline space on the velocity domain [V_MIN, V_MAX]².
 # The 0-form space X⁰ represents scalar fields f(v₁, v₂) = Σᵢ fᵢ φᵢ(v).
 
-const bp = LinRange(V_MIN, V_MAX, N_ELEM + 1)
+const bp = [V_MIN, LinRange(I_MIN, I_MAX, N_ELEM + 1)..., V_MAX]
 
 const geo_1d = Geometry.CartesianGeometry((bp,))
 const B_1d = FunctionSpaces.BSplineSpace(geo_1d, P_DEG, K_REG)
