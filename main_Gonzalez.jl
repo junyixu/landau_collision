@@ -60,18 +60,21 @@ end
 #   w_parts   : (N,)  particle weights (constant)
 #   S0        : entropy S_h(v^n) (precomputed to avoid repeated L² projection)
 #   dt        : time step
-#   max_iter  : maximum Picard iterations (default 5; small Δt converges quickly)
+#   max_iter  : maximum Picard iterations
+#   tol       : relative convergence tolerance on the velocity update
 function step_gonzalez!(v1, v0, w_parts, S0, dt;
-                        max_iter=5)
+                        max_iter=20, tol=1e-7)
     N = size(v0, 1)
     v_mid     = similar(v0)
     dv        = similar(v0)
+    v1_prev   = similar(v0)
     dS_mid    = zeros(N, 2)
     G_eff     = zeros(N, 2)
     dot_v     = zeros(N, 2)
     f_buf     = zeros(n_dofs)
 
     for _ in 1:max_iter
+        v1_prev .= v1
         v_mid .= 0.5 .* (v0 .+ v1)
         dv    .= v1 .- v0
 
@@ -107,8 +110,9 @@ function step_gonzalez!(v1, v0, w_parts, S0, dt;
         #    using the existing compute_collision! at midpoint positions
         compute_collision!(dot_v, v_mid, w_parts, G_eff)
 
-        # 6. Update estimate of v^{n+1}
+        # 6. Update estimate of v^{n+1} and check convergence
         v1 .= v0 .+ dt .* dot_v
+        norm(v1 .- v1_prev) / (norm(dv) + 1e-30) < tol && break
     end
 end
 
