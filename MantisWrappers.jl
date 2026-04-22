@@ -17,17 +17,19 @@ include("parameters.jl")
 # We build a 2D tensor-product B-spline space on the velocity domain [V_MIN, V_MAX]².
 # The 0-form space X⁰ represents scalar fields f(v₁, v₂) = Σᵢ fᵢ φᵢ(v).
 
-const bp = LinRange(V_MIN, V_MAX, N_ELEM + 1)
+begin # Geometry and function spaces
+    const bp = [V_MIN, LinRange(I_MIN, I_MAX, N_ELEM + 1)..., V_MAX]
 
-const geo_1d = Geometry.CartesianGeometry((bp,))
-const B_1d = FunctionSpaces.BSplineSpace(geo_1d, P_DEG, K_REG)
-const TP = FunctionSpaces.TensorProductSpace((B_1d, B_1d), Geometry.CartesianGeometry)
-const X⁰ = Forms.FormSpace(0, TP, "f")
+    const geo_1d = Geometry.CartesianGeometry((bp,))
+    const B_1d = FunctionSpaces.BSplineSpace(geo_1d, P_DEG, K_REG)
+    const TP = FunctionSpaces.TensorProductSpace((B_1d, B_1d), Geometry.CartesianGeometry)
+    const X⁰ = Forms.FormSpace(0, TP, "f")
 
-const n_dofs = Forms.get_num_basis(X⁰) # number of basis functions (degrees of freedom)
-const geo_2d = Forms.get_geometry(X⁰)
-const n_elements = Geometry.get_num_elements(geo_2d)
-const lin_indices = LinearIndices((N_ELEM, N_ELEM))
+    const n_dofs = Forms.get_num_basis(X⁰) # number of basis functions (degrees of freedom)
+    const geo_2d = Forms.get_geometry(X⁰)
+    const n_elements = Geometry.get_num_elements(geo_2d)
+    const lin_indices = LinearIndices((length(bp)-1, length(bp)-1))
+end
 
 # ## Mass matrix assembly
 #
@@ -77,17 +79,29 @@ function locate_particle(v1, v2)
     return ParticleLocation(lin_indices[i, j], Points.CartesianPoints(([ξ1], [ξ2])), h1, h2)
 end
 
-# ## Evaluate wrappers
-#
-# Thin wrappers around Mantis evaluation routines:
-#   - evaluate(FormSpace, elem_id)       → basis values at quadrature nodes
-#   - evaluate(FormField, elem_id)       → field values at quadrature nodes
-#   - evaluate(FormSpace, ParticleLocation) → basis values at a single particle position
+"""
+    evaluate(field_or_space, location)
+
+Thin wrappers around Mantis evaluation routines.
+
+# Methods
+
+- `evaluate(ff::AbstractFormField, elem_id::Int)` — field values at quadrature nodes of element `elem_id`.
+- `evaluate(fs::AbstractFormSpace, elem_id::Int)` — basis values at quadrature nodes of element `elem_id`.
+- `evaluate(ff::AbstractFormField, loc::ParticleLocation)` — field values at particle position `loc`.
+- `evaluate(fs::AbstractFormSpace, loc::ParticleLocation)` — basis values at particle position `loc`.
+
+# Convenience (default to global coordinate space `X⁰`)
+
+- `evaluate(elem_id::Int)` — equivalent to `evaluate(X⁰, elem_id)`.
+- `evaluate(loc::ParticleLocation)` — equivalent to `evaluate(X⁰, loc)`.
+"""
+function evaluate end
 
 evaluate(ff::Forms.AbstractFormField, e::Int) = Forms.evaluate(ff, e, _qrule_integrate.nodes)
 
 evaluate(fs::Forms.AbstractFormSpace, elem_id::Int) = Forms.evaluate(fs, elem_id, _qrule_integrate.nodes)
-evaluate(e::Int) =evaluate(X⁰,e)
+evaluate(e::Int) = evaluate(X⁰, e)
 
 evaluate(fs::Forms.AbstractFormSpace, loc::ParticleLocation) = Forms.evaluate(fs, loc.elem_id, loc.xi)
 evaluate(ff::Forms.AbstractFormField, loc::ParticleLocation) = Forms.evaluate(ff, loc.elem_id, loc.xi)
@@ -248,6 +262,20 @@ export fast_eval_particle!, fast_eval_particle_grad!
 
 include("functions.jl")
 
-export compute_entropy, compute_r!, compute_G!, compute_collision!, l2_project!
+function evaluate_on_grid(field::Forms.FormField, v_grid)
+    nv = length(v_grid)
+    F = zeros(nv, nv)
+    for (j, v2) in enumerate(v_grid)
+        for (i, v1) in enumerate(v_grid)
+            loc = locate_particle(v1, v2)
+            isnothing(loc) && continue
+            fv, _ = evaluate(field, loc::ParticleLocation)
+            F[i, j] = fv[1][1]
+        end
+    end
+    return F
+end
+
+export compute_entropy, compute_r!, compute_G!, compute_collision!, l2_project!, evaluate_on_grid
 
 end # module
