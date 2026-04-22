@@ -1,15 +1,16 @@
 function l2_project!(f_coeffs, v_parts, w_parts)
     rhs = zeros(n_dofs)
+    nloc = (P_DEG + 1)^2
     for α in axes(v_parts, 1)
         loc = locate_particle(v_parts[α, 1], v_parts[α, 2])
         isnothing(loc) && continue
 
-        # φ_k(v_α): evaluate all basis functions at particle position
-        evals, indices = evaluate(loc)
+        # φ_k(v_α) + global DOF indices into preallocated buffers (zero heap alloc)
+        fast_eval_particle!(_lp_vals, _lp_gids, loc)
 
         # b_k += w_α · φ_k(v_α)
-        for (j, gidx) in enumerate(indices[1])
-            rhs[gidx] += w_parts[α] * evals[1][1, j]
+        @inbounds for j in 1:nloc
+            rhs[_lp_gids[j]] += w_parts[α] * _lp_vals[j]
         end
     end
     # M f = b
@@ -48,20 +49,26 @@ function compute_r!(r, field::Forms.FormField)
 end
 function compute_G!(G, v_parts, L_vec)
     fill!(G, 0.0)
+    nloc = (P_DEG + 1)^2
     for α in axes(v_parts, 1)
         loc = locate_particle(v_parts[α, 1], v_parts[α, 2])
         isnothing(loc) && continue
 
-        # nderivatives=1 → local_basis[2][d][1] = ∂φ/∂ξ_d
-        local_basis, indices = evaluate_basis_derivatives(loc, 1)
-        dφ_dξ1 = local_basis[2][1][1]   # (n_pts × n_basis)
-        dφ_dξ2 = local_basis[2][2][1]
+        # values + ∂/∂ξ_d gradients into preallocated buffers (zero heap alloc)
+        fast_eval_particle_grad!(_G_vals, _G_dxi1, _G_dxi2, _G_gids, loc)
 
-        for (j, gidx) in enumerate(indices[1])
-            # G_α += L_k · ∇φ_k(v_α),  chain rule: ∂φ/∂v_d = (∂φ/∂ξ_d) / h_d
-            G[α, 1] += L_vec[gidx] * dφ_dξ1[1, j] / loc.h1
-            G[α, 2] += L_vec[gidx] * dφ_dξ2[1, j] / loc.h2
+        inv_h1 = 1.0 / loc.h1
+        inv_h2 = 1.0 / loc.h2
+        acc1 = 0.0
+        acc2 = 0.0
+        @inbounds for j in 1:nloc
+            L = L_vec[_G_gids[j]]
+            # chain rule: ∂φ/∂v_d = (∂φ/∂ξ_d) / h_d
+            acc1 += L * _G_dxi1[j] * inv_h1
+            acc2 += L * _G_dxi2[j] * inv_h2
         end
+        G[α, 1] = acc1
+        G[α, 2] = acc2
     end
 end
 function compute_collision!(dot_v, v_parts, w_parts, G)

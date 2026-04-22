@@ -8,6 +8,7 @@ module MantisWrappers
 
 using Mantis
 using LinearAlgebra
+using LinearAlgebra: mul!
 
 include("parameters.jl")
 
@@ -110,8 +111,135 @@ build_field(coeffs) = Forms.build_form_field(X⁰, coeffs)
 element_measure(e) = Geometry.get_element_measure(geo_2d, e)
 const jac = element_measure(1)
 
+# ## Bézier extraction cache
+#
+# 1D Bézier extraction matrices (one per 1D element) are precomputed once.
+# On each particle evaluation: φ¹(ξ) = B_bernstein(ξ) · Cᵉ (row-vector form),
+# so mul!(phi, transpose(C), B) gives the B-spline values with zero allocation.
+#
+# 2D basis = tensor product of two 1D evaluations, assembled by a manual double
+# loop (equivalent to kron) directly into the caller's preallocated buffer.
+
+const n_elem_1d = length(bp) - 1
+const _ext1d = [FunctionSpaces.get_extraction(B_1d, e, 1)[1] for e in 1:n_elem_1d]
+const _basis_start_1d = [first(FunctionSpaces.get_basis_indices(B_1d, e)) for e in 1:n_elem_1d]
+const _n_dofs_1d = FunctionSpaces.get_num_basis(B_1d)
+const _lin_dofs_2d = LinearIndices((_n_dofs_1d, _n_dofs_1d))
+
+# Evaluate Bernstein basis and first derivative into preallocated vectors.
+#   B[i+1]  = B_{i,p}(ξ)                 for i = 0..p
+#   dB[i+1] = d/dξ B_{i,p}(ξ) = p · (B_{i-1,p-1}(ξ) − B_{i,p-1}(ξ))
+function _bernstein_eval!(B::AbstractVector, dB::AbstractVector, p::Int, ξ::Float64)
+    one_minus = 1.0 - ξ
+    @inbounds for i in 0:p
+        B[i+1] = binomial(p, i) * ξ^i * one_minus^(p-i)
+    end
+    if p == 0
+        fill!(dB, 0.0)
+    else
+        @inbounds for i in 0:p
+            bm1_left  = i > 0 ? binomial(p-1, i-1) * ξ^(i-1) * one_minus^(p-i)   : 0.0
+            bm1_right = i < p ? binomial(p-1, i)   * ξ^i     * one_minus^(p-1-i) : 0.0
+            dB[i+1] = p * (bm1_left - bm1_right)
+        end
+    end
+    return nothing
+end
+
+# Per-call scratch for the 1D Bernstein / B-spline values & derivatives.
+# Single-threaded; switch to per-thread buffers if particle loops go @threads.
+struct _ParticleBuf
+    B1::Vector{Float64}
+    dB1::Vector{Float64}
+    phi1::Vector{Float64}
+    dphi1::Vector{Float64}
+    B2::Vector{Float64}
+    dB2::Vector{Float64}
+    phi2::Vector{Float64}
+    dphi2::Vector{Float64}
+end
+_ParticleBuf() = _ParticleBuf(ntuple(_ -> zeros(P_DEG + 1), 8)...)
+
+const _pbuf = _ParticleBuf()
+
+# Fill `vals` with φ_{j1,j2}(ξ₁,ξ₂) and `gids` with their global DOF indices for
+# the (p+1)² basis functions supported on `loc`. Zero heap allocation.
+function fast_eval_particle!(vals::AbstractVector, gids::AbstractVector,
+                              loc::ParticleLocation, buf::_ParticleBuf = _pbuf)
+    # CartesianPoints getindex(1) → tuple (ξ₁, ξ₂)
+    ξ = loc.xi[1]
+    ξ1 = ξ[1]
+    ξ2 = ξ[2]
+    # Inverse map elem_id → (i, j) 1D element indices
+    ci = CartesianIndices(lin_indices)[loc.elem_id]
+    i = ci[1]
+    j = ci[2]
+
+    C1 = _ext1d[i];  C2 = _ext1d[j]
+    s1 = _basis_start_1d[i];  s2 = _basis_start_1d[j]
+
+    _bernstein_eval!(buf.B1, buf.dB1, P_DEG, ξ1)
+    _bernstein_eval!(buf.B2, buf.dB2, P_DEG, ξ2)
+    mul!(buf.phi1, transpose(C1), buf.B1)
+    mul!(buf.phi2, transpose(C2), buf.B2)
+
+    p1 = P_DEG + 1
+    k = 0
+    @inbounds for j2 in 1:p1, j1 in 1:p1
+        k += 1
+        vals[k] = buf.phi1[j1] * buf.phi2[j2]
+        gids[k] = _lin_dofs_2d[s1 + j1 - 1, s2 + j2 - 1]
+    end
+    return k
+end
+
+# Values + canonical-coord gradients. Physical gradient: ∂/∂v_d = (∂/∂ξ_d) / h_d.
+function fast_eval_particle_grad!(vals::AbstractVector,
+                                   dvals_dxi1::AbstractVector,
+                                   dvals_dxi2::AbstractVector,
+                                   gids::AbstractVector,
+                                   loc::ParticleLocation, buf::_ParticleBuf = _pbuf)
+    ξ = loc.xi[1]
+    ξ1 = ξ[1]
+    ξ2 = ξ[2]
+    ci = CartesianIndices(lin_indices)[loc.elem_id]
+    i = ci[1]
+    j = ci[2]
+
+    C1 = _ext1d[i];  C2 = _ext1d[j]
+    s1 = _basis_start_1d[i];  s2 = _basis_start_1d[j]
+
+    _bernstein_eval!(buf.B1, buf.dB1, P_DEG, ξ1)
+    _bernstein_eval!(buf.B2, buf.dB2, P_DEG, ξ2)
+    mul!(buf.phi1,  transpose(C1), buf.B1)
+    mul!(buf.dphi1, transpose(C1), buf.dB1)
+    mul!(buf.phi2,  transpose(C2), buf.B2)
+    mul!(buf.dphi2, transpose(C2), buf.dB2)
+
+    p1 = P_DEG + 1
+    k = 0
+    @inbounds for j2 in 1:p1, j1 in 1:p1
+        k += 1
+        vals[k]       = buf.phi1[j1]  * buf.phi2[j2]
+        dvals_dxi1[k] = buf.dphi1[j1] * buf.phi2[j2]
+        dvals_dxi2[k] = buf.phi1[j1]  * buf.dphi2[j2]
+        gids[k]       = _lin_dofs_2d[s1 + j1 - 1, s2 + j2 - 1]
+    end
+    return k
+end
+
+# Preallocated per-particle scratch for l2_project! and compute_G!.
+const _NLOC = (P_DEG + 1)^2
+const _lp_vals = zeros(_NLOC)
+const _lp_gids = zeros(Int, _NLOC)
+const _G_vals  = zeros(_NLOC)
+const _G_dxi1  = zeros(_NLOC)
+const _G_dxi2  = zeros(_NLOC)
+const _G_gids  = zeros(Int, _NLOC)
+
 export n_dofs, n_elements, M_lu
 export locate_particle, evaluate, build_field
+export fast_eval_particle!, fast_eval_particle_grad!
 
 # ## Physics routines
 #
