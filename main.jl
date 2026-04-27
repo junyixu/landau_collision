@@ -131,7 +131,7 @@ function main()
         H_history = -entropy_history
         ax_H = Axis(fig[n_snap_rows+1, 1:2];
             xlabel="time step", ylabel="H_h = -S_h",
-            title="Boltzmann H-function (should decrease monotonically)")
+            title="Boltzmann H-function (should increase monotonically)")
         lines!(ax_H, steps, H_history; color=:red, linewidth=2)
 
         # Energy conservation error (log scale)
