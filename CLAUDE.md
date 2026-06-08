@@ -2,8 +2,9 @@
 
 ## Long-running commands: always `systemd-run --user`
 
-Any Julia run (simulation, plot script, analysis) that may take >5 s **must** be
-launched as a transient systemd user unit, not a foreground shell. See
+Any Julia run (simulation, plot script, analysis) that may take >1 min **must**
+be launched as a transient systemd user unit, not a foreground shell. Short
+probes including cold-start precompile (~30 s) are fine in the foreground. See
 `~/.claude/skills/systemd-task/SKILL.md` for full reference.
 
 ### Naming convention

@@ -1,13 +1,18 @@
-# Physics + diagnostics routines. All take `ws::Workspace` as first argument.
+# 1D conservative Lenard-Bernstein physics + diagnostics.
+# All take `ws::Workspace` as first argument.
+
+# Floor on f_s used in 1/f_s evaluation. Particles in regions where f_s drops
+# below this floor get f_s clamped; mostly catches dying tails of bi-Maxwellian
+# valleys and Gibbs undershoots. Paper §5.5 also notes f_s = 0 is a hard
+# singularity of the operator.
+const FS_FLOOR = 1e-30
 
 # ## L² projection of weighted Dirac measure onto X⁰
-#
-# Solves M c = b where b_k = Σ_α w_α φ_k(v_α). The result f_s(v) = Σ c_k φ_k(v).
 function l2_project!(ws::Workspace, f_coeffs, v_parts, w_parts)
     rhs = zeros(ws.n_dofs)
-    nloc = (ws.p.P_DEG + 1)^2
-    for α in axes(v_parts, 1)
-        loc = locate_particle(ws, v_parts[α, 1], v_parts[α, 2])
+    nloc = ws.p.P_DEG + 1
+    for α in eachindex(v_parts)
+        loc = locate_particle(ws, v_parts[α])
         isnothing(loc) && continue
         fast_eval_particle!(ws, ws.lp_vals, ws.lp_gids, loc)
         @inbounds for j in 1:nloc
@@ -18,7 +23,8 @@ function l2_project!(ws::Workspace, f_coeffs, v_parts, w_parts)
     return nothing
 end
 
-# ## Entropy S_h = -∫ f_s log f_s dv (so dS/dt ≥ 0 with our sign convention)
+# ## Entropy H_h = -∫ f_s log f_s dv  (sign convention: dH/dt ≥ 0)
+# Paper §5 uses S = ∫ f log f, so H_h = -S; same numerical content.
 function compute_entropy(ws::Workspace, field::Forms.FormField)
     S = 0.0
     for e in 1:ws.n_elements
@@ -26,7 +32,7 @@ function compute_entropy(ws::Workspace, field::Forms.FormField)
         fv, _ = evaluate(ws, field, e)
         for q in eachindex(ws.qrule_integrate.weights)
             f_val = fv[1][q]
-            if f_val > 1e-30
+            if f_val > FS_FLOOR
                 S -= f_val * log(f_val) * ws.qrule_integrate.weights[q] * jac
             end
         end
@@ -34,90 +40,84 @@ function compute_entropy(ws::Workspace, field::Forms.FormField)
     return S
 end
 
-# ## r_i = ∫ φ_i (1 + log f_s) dv  → entropy gradient seed
-function compute_r!(ws::Workspace, r, field::Forms.FormField)
-    fill!(r, 0.0)
-    for e in 1:ws.n_elements
-        jac = element_measure(ws, e)
-        fv, _ = evaluate(ws, field, e)
-        evals, indices = evaluate(ws, e)
-        for q in eachindex(ws.qrule_integrate.weights)
-            f_val = fv[1][q]
-            integrand = f_val > 1e-30 ? (1 + log(f_val)) : 0.0
-            for (j, gidx) in enumerate(indices[1])
-                r[gidx] += integrand * evals[1][q, j] *
-                          ws.qrule_integrate.weights[q] * jac
-            end
+# ## Eval f_s and f_s' at every particle location.
+# Out-of-domain particles → f = FS_FLOOR, df = 0 (their contribution to a(v,f_s)
+# becomes A1 + A2*v which keeps moment-conservation algebra consistent).
+function eval_fs_dfs_at_particles!(ws::Workspace,
+                                    f_vals::AbstractVector, df_vals::AbstractVector,
+                                    v_parts, f_coeffs)
+    nloc = ws.p.P_DEG + 1
+    @inbounds for α in eachindex(v_parts)
+        loc = locate_particle(ws, v_parts[α])
+        if isnothing(loc)
+            f_vals[α] = FS_FLOOR
+            df_vals[α] = 0.0
+            continue
         end
+        fast_eval_particle_grad!(ws, ws.G_vals, ws.G_dxi, ws.G_gids, loc)
+        inv_h = 1.0 / loc.h
+        f = 0.0; df = 0.0
+        for j in 1:nloc
+            c = f_coeffs[ws.G_gids[j]]
+            f  += c * ws.G_vals[j]
+            df += c * ws.G_dxi[j] * inv_h
+        end
+        f_vals[α]  = max(f, FS_FLOOR)
+        df_vals[α] = df
     end
     return nothing
 end
 
-# ## G_α = ∇L(v_α) where L = M⁻¹ r — particle-side entropy gradient
-function compute_G!(ws::Workspace, G, v_parts, L_vec)
-    fill!(G, 0.0)
-    nloc = (ws.p.P_DEG + 1)^2
-    for α in axes(v_parts, 1)
-        loc = locate_particle(ws, v_parts[α, 1], v_parts[α, 2])
-        isnothing(loc) && continue
-        fast_eval_particle_grad!(ws, ws.G_vals, ws.G_dxi1, ws.G_dxi2, ws.G_gids, loc)
-        inv_h1 = 1.0 / loc.h1
-        inv_h2 = 1.0 / loc.h2
-        acc1 = 0.0; acc2 = 0.0
-        @inbounds for j in 1:nloc
-            L = L_vec[ws.G_gids[j]]
-            acc1 += L * ws.G_dxi1[j] * inv_h1
-            acc2 += L * ws.G_dxi2[j] * inv_h2
-        end
-        G[α, 1] = acc1
-        G[α, 2] = acc2
+# ## Particle moments  n_h = Σ w_α,  n_h u_h = Σ w_α v_α,  n_h ε_h = Σ w_α v_α²
+function compute_moments(v_parts, w_parts)
+    n = 0.0; nu = 0.0; ne = 0.0
+    @inbounds for α in eachindex(v_parts)
+        wα = w_parts[α]; vα = v_parts[α]
+        n  += wα
+        nu += wα * vα
+        ne += wα * vα^2
     end
-    return nothing
+    return n, nu/n, ne/n   # returns (n_h, u_h, ε_h)
 end
 
-# ## Landau collision-operator velocity update
-function compute_collision!(ws::Workspace, dot_v, v_parts, w_parts, G)
-    v1_lo, v1_hi = ws.bp1[1], ws.bp1[end]
-    v2_lo, v2_hi = ws.bp2[1], ws.bp2[end]
-    fill!(dot_v, 0.0)
-    N = size(v_parts, 1)
-    Threads.@threads for γ in 1:N
-        vγ1, vγ2 = v_parts[γ, 1], v_parts[γ, 2]
-        (vγ1 <= v1_lo || vγ1 >= v1_hi ||
-         vγ2 <= v2_lo || vγ2 >= v2_hi) && continue
-        Gγ1, Gγ2 = G[γ, 1], G[γ, 2]
-        acc1, acc2 = 0.0, 0.0
-        for α in 1:N
-            γ == α && continue
-            vα1, vα2 = v_parts[α, 1], v_parts[α, 2]
-            (vα1 <= v1_lo || vα1 >= v1_hi ||
-             vα2 <= v2_lo || vα2 >= v2_hi) && continue
-            d1 = vγ1 - vα1
-            d2 = vγ2 - vα2
-            dist2 = d1^2 + d2^2
-            dist2 < 1e-24 && continue
-            dist = sqrt(dist2)
-            g1 = G[α, 1] - Gγ1
-            g2 = G[α, 2] - Gγ2
-            dv_dot_g = (d1 * g1 + d2 * g2) / dist2
-            inv_dist = 1.0 / dist
-            acc1 += w_parts[α] * (g1 - d1 * dv_dot_g) * inv_dist
-            acc2 += w_parts[α] * (g2 - d2 * dv_dot_g) * inv_dist
-        end
-        dot_v[γ, 1] = acc1
-        dot_v[γ, 2] = acc2
+# ## Discrete A1, A2  (paper eq 30)
+# Inputs:
+#   v_parts, w_parts   : particle velocities + weights
+#   f_vals, df_vals    : f_s(v_α), f_s'(v_α)
+#   n_h, u_h, eps_h    : particle moments
+function compute_A1A2(v_parts, w_parts, f_vals, df_vals, n_h, u_h, eps_h)
+    s1 = 0.0; s2 = 0.0
+    @inbounds for α in eachindex(v_parts)
+        ratio = df_vals[α] / f_vals[α]
+        wα = w_parts[α]
+        s1 += wα * (u_h * v_parts[α] - eps_h) * ratio
+        s2 += wα * (u_h - v_parts[α]) * ratio
+    end
+    denom = n_h * eps_h - n_h * u_h^2     # = n_h * (ε_h - u_h²)
+    A1 = s1 / denom
+    A2 = s2 / denom
+    return A1, A2
+end
+
+# ## LB velocity update  v̇_α = -ν (f_s'(v_α)/f_s(v_α) + A1 + A2 v_α)
+# Sign rationale: paper eq (23) is ∂_t f = ∂_v(a f) with a = ν(f'/f + A1 + A2 v).
+# Continuity ∂_t f + ∂_v(v̇ f) = 0 forces v̇ = -a. Paper eq (24) drops the minus
+# (typo); we follow the physical sign. Sanity: pure-heat limit (A1=A2=0) gives
+# v̇ = -ν f'/f, particles drift down log-density gradient = diffusion. With the
+# wrong (paper) sign particles concentrate toward peak (anti-diffusion) and H_h
+# decreases — matches what we observed in the smoke test before this fix.
+function compute_LB_velocity!(dot_v, v_parts, f_vals, df_vals, A1, A2, ν)
+    @inbounds for α in eachindex(v_parts)
+        dot_v[α] = -ν * (df_vals[α] / f_vals[α] + A1 + A2 * v_parts[α])
     end
     return nothing
 end
 
 # ##############################################################################
-# Diagnostics
+# Diagnostics (1D)
 # ##############################################################################
-#
+
 # (1) Negative-part L¹ norm of f_s:    ∫ max(-f_s, 0) dv
-#     A direct probe of L²-projection Gibbs oscillations: the empirical density
-#     is non-negative everywhere, so any negative lobe in f_s is a projection
-#     artifact. Computed on the same Gauss–Legendre grid used elsewhere.
 function compute_negative_part_l1(ws::Workspace, field::Forms.FormField)
     neg = 0.0
     for e in 1:ws.n_elements
@@ -133,26 +133,20 @@ function compute_negative_part_l1(ws::Workspace, field::Forms.FormField)
     return neg
 end
 
-# (2) ‖f_s − f_p‖₂  with f_p the *element-constant histogram density*:
-#       f_p(v) = (Σ_{α: v_α ∈ e(v)} w_α) / |e(v)|
-#     where e(v) is the element containing v. Discrepancy between the smooth
-#     B-spline f_s and the piecewise-constant histogram f_p captures both the
-#     Gibbs oscillation amplitude *and* the cell-to-cell mass-distribution
-#     mismatch that drives spurious gradients via L = M⁻¹ r.
+# (2) ‖f_s − f_p‖₂ with f_p the element-constant histogram density.
 function compute_fs_minus_fp_l2(ws::Workspace, field::Forms.FormField,
-                                 v_parts::AbstractMatrix, w_parts::AbstractVector)
-    # Per-element particle mass:  m_e = Σ_{α ∈ e} w_α
+                                 v_parts::AbstractVector, w_parts::AbstractVector)
     elem_mass = zeros(ws.n_elements)
-    for α in axes(v_parts, 1)
-        loc = locate_particle(ws, v_parts[α, 1], v_parts[α, 2])
+    for α in eachindex(v_parts)
+        loc = locate_particle(ws, v_parts[α])
         isnothing(loc) && continue
         elem_mass[loc.elem_id] += w_parts[α]
     end
 
     sumsq = 0.0
     for e in 1:ws.n_elements
-        jac = element_measure(ws, e)            # |element|
-        fp_e = elem_mass[e] / jac                # histogram density on element e
+        jac = element_measure(ws, e)
+        fp_e = elem_mass[e] / jac
         fv, _ = evaluate(ws, field, e)
         for q in eachindex(ws.qrule_integrate.weights)
             f_val = fv[1][q]

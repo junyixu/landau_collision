@@ -1,64 +1,64 @@
-# Parameters.jl — simulation configuration carried via a single immutable struct.
+# Parameters.jl — 1D Lenard-Bernstein configuration.
 #
 # Workflow:
-#   1. Concrete preset files (parameters_default.jl, parameters_finemesh.jl, …)
-#      construct a `SimParameters` value bound to the global symbol `PARAMS`.
-#      Each preset directly provides the breakpoint vectors `bp1`, `bp2`
-#      (anisotropic, possibly non-uniform).
-#   2. The CLI entry point in main_Gonzalez.jl picks the preset file from
-#      ARGS[1] (defaulting to "parameters_default.jl") and `include`s it.
-#   3. Remaining ARGS of the form --key=val override individual *scalar* fields
-#      via `parse_overrides` (vector fields like `bp1`/`bp2` are not CLI-
-#      overridable — re-edit the preset file instead).
+#   1. Preset files (parameters_LB_*.jl) build a `SimParameters` bound to
+#      `PARAMS`. Each preset directly supplies the breakpoint vector `bp`.
+#   2. main_LB.jl picks ARGS[1] as preset, --key=val tokens override scalars.
+#   3. Vector fields (`bp`) not CLI-overridable — edit the preset.
 #
-# Every downstream module (MantisWrappers, functions, main loop) accepts an
-# instance of `SimParameters` rather than reading globals; this is the only
-# state shared across the call chain besides the preallocated `Workspace`.
+# Initial-condition selector:
+#   ic_type = "shifted" : v ~ N(ic_mu, ic_sigma)               (paper §5.2)
+#   ic_type = "bimax"   : 50/50 mixture N(±ic_sep, ic_sigma)   (paper §5.3)
+#   ic_type = "uniform" : v ~ U(-ic_L, ic_L)                   (paper §5.4)
 
 Base.@kwdef struct SimParameters
-    # Velocity-space breakpoints (anisotropic, possibly non-uniform).
-    # `bp1[1]`/`bp1[end]` define the v₁ domain; cell count = `length(bp1) - 1`.
-    bp1::Vector{Float64} = [-6.0; -5.0; LinRange(-4.0, 4.0, 17); 5.0; 6.0]
-    bp2::Vector{Float64} = [-6.0; LinRange(-2.5, 2.5, 13); 6.0]
+    # Velocity-space breakpoints (1D, possibly non-uniform).
+    bp::Vector{Float64} = collect(LinRange(-10.0, 10.0, 42))
 
     # B-spline space
-    P_DEG::Int = 2
-    K_REG::Int = 1
-    N_QUAD::Int = 6              # 1D Gauss–Legendre points per element
+    P_DEG::Int = 3
+    K_REG::Int = 2
+    N_QUAD::Int = 6
 
-    # Particle initial condition (anisotropic Gaussian, untruncated)
-    N_PARTICLES::Int = 10_000
-    σ1::Float64 = 4/3
-    σ2::Float64 = 0.5
+    # Particles
+    N_PARTICLES::Int = 1000
 
-    # Time integration
-    DT::Float64 = 0.001
-    N_STEPS::Int = 400
+    # IC selector + parameters (only the relevant ones for the chosen type are used)
+    ic_type::String = "bimax"
+    ic_mu::Float64    = 2.0       # shifted: mean
+    ic_sigma::Float64 = 1.0       # shifted / bimax: std
+    ic_sep::Float64   = 2.0       # bimax:   centers at ±ic_sep
+    ic_L::Float64     = 2.0       # uniform: half-width
+
+    # Collision frequency
+    nu::Float64 = 1.0
+
+    # Time integration (implicit midpoint)
+    DT::Float64 = 8e-4
+    N_STEPS::Int = 6250            # default bi-Max final time = 5.0
 
     # Implicit-solver knobs
     use_anderson::Bool = true
     damping::Float64   = 0.7
     m_anderson::Int    = 8
-    tol::Float64       = 1e-12   # relative tol on ‖r‖ / ‖v‖
+    tol::Float64       = 1e-12
     max_iter::Int      = 2000
-    # Anderson convergence safety net (see `step_anderson!` doc-comment):
-    abs_floor::Float64       = 1e-7   # cap on effective tol — past this, asking
-                                       # for less is pointless (Picard noise floor)
-    stag_window::Int         = 50     # iters between stagnation checks
-    stag_rel_tol::Float64    = 0.01   # < 1% drop in `nrm_best` over window ⇒ exit
-    damp_decay_start::Int    = 200    # iter index after which damping is decayed
-    damp_decay_factor::Float64 = 0.5  # damping multiplier once decay starts
+    abs_floor::Float64       = 1e-10
+    stag_window::Int         = 50
+    stag_rel_tol::Float64    = 0.01
+    damp_decay_start::Int    = 200
+    damp_decay_factor::Float64 = 0.5
 
-    # Run identifier (used in output file names)
-    suffix::String = "anderson"
+    # Snapshot cadence (every snap_every steps + final)
+    snap_every::Int = 250
 
-    # Random seed (so independent runs use the same particle IC)
+    # Run identifier
+    suffix::String = "LB_bimax"
+
+    # RNG seed
     seed::Int = 42
 end
 
-# Parse a single CLI token of the form "--key=val". The space-separated form
-# would require sequential scanning; we only support the equals form to keep
-# the parser stateless and easy to read.
 function _parse_override_token(tok::AbstractString)
     startswith(tok, "--") || return nothing
     eq = findfirst('=', tok)
@@ -68,9 +68,6 @@ function _parse_override_token(tok::AbstractString)
     return key, val_str
 end
 
-# Coerce a string into the field's declared type. Bool accepts true/false/1/0;
-# strings pass through; numeric types use parse(T, s). Vector fields are
-# rejected at the call site — too clumsy to express on the CLI.
 function _coerce(::Type{T}, s::AbstractString) where {T}
     if T === Bool
         s in ("true", "1")  && return true
@@ -79,18 +76,12 @@ function _coerce(::Type{T}, s::AbstractString) where {T}
     elseif T <: AbstractString
         return String(s)
     elseif T <: AbstractVector
-        error("Vector parameters (`bp1`, `bp2`) are not CLI-overridable; edit the preset file")
+        error("Vector parameter `bp` is not CLI-overridable; edit the preset file")
     else
         return parse(T, s)
     end
 end
 
-"""
-    parse_overrides(p::SimParameters, args)
-
-Apply every `--key=value` token in `args` on top of `p`, returning a new
-`SimParameters`. Unknown keys raise. Empty `args` returns `p` unchanged.
-"""
 function parse_overrides(p::SimParameters, args)
     isempty(args) && return p
     fields = fieldnames(SimParameters)
@@ -106,24 +97,35 @@ function parse_overrides(p::SimParameters, args)
     return SimParameters(; (f => get(overrides, f, getfield(p, f)) for f in fields)...)
 end
 
-"""
-    print_summary(p::SimParameters)
-
-One-shot human-readable dump of the active configuration. Used at the top of
-each run so the .log captures exactly what was run.
-"""
 function print_summary(p::SimParameters)
-    n1, n2 = length(p.bp1) - 1, length(p.bp2) - 1
-    dv1_min, dv1_max = extrema(diff(p.bp1))
-    dv2_min, dv2_max = extrema(diff(p.bp2))
-    println("==== SimParameters ====")
-    println("v₁ ∈ [$(p.bp1[1]), $(p.bp1[end])]  cells=$n1  Δv₁ ∈ [$dv1_min, $dv1_max]")
-    println("v₂ ∈ [$(p.bp2[1]), $(p.bp2[end])]  cells=$n2  Δv₂ ∈ [$dv2_min, $dv2_max]")
+    n_cells = length(p.bp) - 1
+    dv_min, dv_max = extrema(diff(p.bp))
+    println("==== SimParameters (LB 1D) ====")
+    println("v ∈ [$(p.bp[1]), $(p.bp[end])]  cells=$n_cells  Δv ∈ [$dv_min, $dv_max]")
     println("P_DEG=$(p.P_DEG)  K_REG=$(p.K_REG)  N_QUAD=$(p.N_QUAD)")
-    println("N_PARTICLES=$(p.N_PARTICLES)  σ=($(p.σ1), $(p.σ2))  seed=$(p.seed)")
-    println("DT=$(p.DT)  N_STEPS=$(p.N_STEPS)")
+    println("N_PARTICLES=$(p.N_PARTICLES)  seed=$(p.seed)")
+    println("ic_type=$(p.ic_type)  μ=$(p.ic_mu)  σ=$(p.ic_sigma)  sep=$(p.ic_sep)  L=$(p.ic_L)")
+    println("ν=$(p.nu)  DT=$(p.DT)  N_STEPS=$(p.N_STEPS)  T_final=$(p.DT * p.N_STEPS)")
     println("solver=$(p.use_anderson ? "Anderson(m=$(p.m_anderson))" : "Picard")" *
             "  damping=$(p.damping)  tol=$(p.tol)  max_iter=$(p.max_iter)")
     println("suffix=$(p.suffix)")
-    println("=======================")
+    println("===============================")
+end
+
+# Sample initial particle velocities according to `ic_type`. Returns Vector{Float64}.
+function sample_initial_velocities(p::SimParameters, rng=Random.default_rng())
+    if p.ic_type == "shifted"
+        return p.ic_mu .+ p.ic_sigma .* randn(rng, p.N_PARTICLES)
+    elseif p.ic_type == "bimax"
+        v = Vector{Float64}(undef, p.N_PARTICLES)
+        for i in 1:p.N_PARTICLES
+            sign_i = rand(rng) < 0.5 ? -1.0 : 1.0
+            v[i] = sign_i * p.ic_sep + p.ic_sigma * randn(rng)
+        end
+        return v
+    elseif p.ic_type == "uniform"
+        return p.ic_L .* (2 .* rand(rng, p.N_PARTICLES) .- 1.0)
+    else
+        error("Unknown ic_type: $(p.ic_type)")
+    end
 end
