@@ -7,7 +7,7 @@
 #
 # Default suffix=LB2D_v3. Also dumps a standalone step-0 (initial-condition) PNG.
 
-using CairoMakie
+using GLMakie
 using DelimitedFiles
 
 suffix = length(ARGS) >= 1 ? ARGS[1] : "LB2D_v3"
@@ -82,8 +82,6 @@ function plot_single(lbrun::LBScatterRun, step::Integer)
         title="LB scatter  (suffix=$(lbrun.suffix), step=$step, t=$t, N=$N)",
     )
     p = lbpanel!(ax, lbrun, step; markersize=2, color=(:navy, 0.25), meshwidth=0.5)
-    xlims!(ax, p.bp1[][1], p.bp1[][end])
-    ylims!(ax, p.bp2[][1], p.bp2[][end])
     ax2 = Axis(
         fig[1, 2]; xlabel="v₁", ylabel="v₂", aspect=DataAspect(), title="bulk zoom  v₁∈[-4,4], v₂∈[-2.5,2.5]"
     )
@@ -92,7 +90,8 @@ function plot_single(lbrun::LBScatterRun, step::Integer)
     ylims!(ax2, -2.5, 2.5)
     name = "scatter_$(lbrun.suffix)_step$(lpad(step, 5, '0')).png"
     save(name, fig)
-    return println("Saved $name  (N=$N)")
+    println("Saved $name  (N=$N)")
+    return fig
 end
 
 # ---- evolution montage: bulk-zoom panel per snapshot step -------------------
@@ -123,7 +122,8 @@ function plot_evolution(lbrun::LBScatterRun)
     end
     rowsize!(fig.layout, 0, Fixed(40))
     save(lbrun.montage_png, fig)
-    return println("Saved $(lbrun.montage_png)  ($nstep panels)")
+    println("Saved $(lbrun.montage_png)  ($nstep panels)")
+    return fig
 end
 
 lbrun = LBScatterRun(suffix)

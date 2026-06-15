@@ -1,41 +1,41 @@
-# Parameters.jl — 1D Lenard-Bernstein configuration.
+# Parameters.jl — 2D Lenard-Bernstein configuration.
 #
 # Workflow:
-#   1. Preset files (parameters_LB_*.jl) build a `SimParameters` bound to
-#      `PARAMS`. Each preset directly supplies the breakpoint vector `bp`.
+#   1. Preset files (parameters_LB2D_*.jl) build a `SimParameters` bound to
+#      `PARAMS::SimParameters`. Each preset directly supplies the anisotropic
+#      breakpoint vectors `bp1`, `bp2`.
 #   2. main_LB.jl picks ARGS[1] as preset, --key=val tokens override scalars.
-#   3. Vector fields (`bp`) not CLI-overridable — edit the preset.
+#   3. Vector fields (`bp1`, `bp2`) not CLI-overridable — edit the preset.
 #
-# Initial-condition selector:
-#   ic_type = "shifted" : v ~ N(ic_mu, ic_sigma)               (paper §5.2)
-#   ic_type = "bimax"   : 50/50 mixture N(±ic_sep, ic_sigma)   (paper §5.3)
-#   ic_type = "uniform" : v ~ U(-ic_L, ic_L)                   (paper §5.4)
+# Initial condition: anisotropic centered Gaussian  v ~ N(0, diag(σ1², σ2²)).
+# Defaults match the 2D Landau "v3 baseline" mesh + IC that exhibited the
+# honeycomb artifact, so an LB run on the identical mesh isolates whether the
+# artifact is mesh/projection-driven (appears here too) or Landau-kernel-
+# specific (absent here).
+
+using Random
 
 Base.@kwdef struct SimParameters
-    # Velocity-space breakpoints (1D, possibly non-uniform).
-    bp::Vector{Float64} = collect(LinRange(-10.0, 10.0, 42))
+    # Velocity-space breakpoints (anisotropic, possibly non-uniform).
+    bp1::Vector{Float64} = [-6.0; -5.0; LinRange(-4.0, 4.0, 17); 5.0; 6.0]
+    bp2::Vector{Float64} = [-6.0; LinRange(-2.5, 2.5, 26); 6.0]
 
     # B-spline space
-    P_DEG::Int = 3
-    K_REG::Int = 2
+    P_DEG::Int = 2
+    K_REG::Int = 1
     N_QUAD::Int = 6
 
-    # Particles
-    N_PARTICLES::Int = 1000
-
-    # IC selector + parameters (only the relevant ones for the chosen type are used)
-    ic_type::String = "bimax"
-    ic_mu::Float64    = 2.0       # shifted: mean
-    ic_sigma::Float64 = 1.0       # shifted / bimax: std
-    ic_sep::Float64   = 2.0       # bimax:   centers at ±ic_sep
-    ic_L::Float64     = 2.0       # uniform: half-width
+    # Particles + anisotropic Gaussian IC (centered, untruncated)
+    N_PARTICLES::Int = 40_000
+    σ1::Float64 = 4/3
+    σ2::Float64 = 0.5
 
     # Collision frequency
     nu::Float64 = 1.0
 
     # Time integration (implicit midpoint)
-    DT::Float64 = 8e-4
-    N_STEPS::Int = 6250            # default bi-Max final time = 5.0
+    DT::Float64 = 0.001
+    N_STEPS::Int = 800
 
     # Implicit-solver knobs
     use_anderson::Bool = true
@@ -44,16 +44,16 @@ Base.@kwdef struct SimParameters
     tol::Float64       = 1e-12
     max_iter::Int      = 2000
     abs_floor::Float64       = 1e-10
-    stag_window::Int         = 50
-    stag_rel_tol::Float64    = 0.01
+    stag_window::Int         = 30
+    stag_rel_tol::Float64    = 0.1
     damp_decay_start::Int    = 200
     damp_decay_factor::Float64 = 0.5
 
     # Snapshot cadence (every snap_every steps + final)
-    snap_every::Int = 250
+    snap_every::Int = 50
 
     # Run identifier
-    suffix::String = "LB_bimax"
+    suffix::String = "LB2D_v3"
 
     # RNG seed
     seed::Int = 42
@@ -76,7 +76,7 @@ function _coerce(::Type{T}, s::AbstractString) where {T}
     elseif T <: AbstractString
         return String(s)
     elseif T <: AbstractVector
-        error("Vector parameter `bp` is not CLI-overridable; edit the preset file")
+        error("Vector parameters (`bp1`, `bp2`) are not CLI-overridable; edit the preset file")
     else
         return parse(T, s)
     end
@@ -98,13 +98,14 @@ function parse_overrides(p::SimParameters, args)
 end
 
 function print_summary(p::SimParameters)
-    n_cells = length(p.bp) - 1
-    dv_min, dv_max = extrema(diff(p.bp))
-    println("==== SimParameters (LB 1D) ====")
-    println("v ∈ [$(p.bp[1]), $(p.bp[end])]  cells=$n_cells  Δv ∈ [$dv_min, $dv_max]")
+    n1, n2 = length(p.bp1) - 1, length(p.bp2) - 1
+    dv1_min, dv1_max = extrema(diff(p.bp1))
+    dv2_min, dv2_max = extrema(diff(p.bp2))
+    println("==== SimParameters (LB 2D) ====")
+    println("v₁ ∈ [$(p.bp1[1]), $(p.bp1[end])]  cells=$n1  Δv₁ ∈ [$dv1_min, $dv1_max]")
+    println("v₂ ∈ [$(p.bp2[1]), $(p.bp2[end])]  cells=$n2  Δv₂ ∈ [$dv2_min, $dv2_max]")
     println("P_DEG=$(p.P_DEG)  K_REG=$(p.K_REG)  N_QUAD=$(p.N_QUAD)")
-    println("N_PARTICLES=$(p.N_PARTICLES)  seed=$(p.seed)")
-    println("ic_type=$(p.ic_type)  μ=$(p.ic_mu)  σ=$(p.ic_sigma)  sep=$(p.ic_sep)  L=$(p.ic_L)")
+    println("N_PARTICLES=$(p.N_PARTICLES)  σ=($(p.σ1), $(p.σ2))  seed=$(p.seed)")
     println("ν=$(p.nu)  DT=$(p.DT)  N_STEPS=$(p.N_STEPS)  T_final=$(p.DT * p.N_STEPS)")
     println("solver=$(p.use_anderson ? "Anderson(m=$(p.m_anderson))" : "Picard")" *
             "  damping=$(p.damping)  tol=$(p.tol)  max_iter=$(p.max_iter)")
@@ -112,20 +113,11 @@ function print_summary(p::SimParameters)
     println("===============================")
 end
 
-# Sample initial particle velocities according to `ic_type`. Returns Vector{Float64}.
+# Sample initial particle velocities: anisotropic centered Gaussian. Returns
+# an N×2 matrix (rows = particles, cols = (v₁, v₂)).
 function sample_initial_velocities(p::SimParameters, rng=Random.default_rng())
-    if p.ic_type == "shifted"
-        return p.ic_mu .+ p.ic_sigma .* randn(rng, p.N_PARTICLES)
-    elseif p.ic_type == "bimax"
-        v = Vector{Float64}(undef, p.N_PARTICLES)
-        for i in 1:p.N_PARTICLES
-            sign_i = rand(rng) < 0.5 ? -1.0 : 1.0
-            v[i] = sign_i * p.ic_sep + p.ic_sigma * randn(rng)
-        end
-        return v
-    elseif p.ic_type == "uniform"
-        return p.ic_L .* (2 .* rand(rng, p.N_PARTICLES) .- 1.0)
-    else
-        error("Unknown ic_type: $(p.ic_type)")
-    end
+    v = zeros(p.N_PARTICLES, 2)
+    v[:, 1] .= p.σ1 .* randn(rng, p.N_PARTICLES)
+    v[:, 2] .= p.σ2 .* randn(rng, p.N_PARTICLES)
+    return v
 end
