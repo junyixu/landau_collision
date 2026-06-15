@@ -392,10 +392,9 @@ function run_simulation(p::SimParameters; resume=nothing)
         println("Initial  E   = $(energy_history[end])")
         println("Initial  P   = $(momentum_history[end])")
         fs_minus_fp_l2 = compute_fs_minus_fp_l2(ws, f_s0, v_particles, w_particles)
-        println("Initial  ‖f_s − f_p‖₂ = " *
-        string(fs_minus_fp_l2))
-        println("Initial  ∫max(−f_s,0) = " *
-                string(compute_negative_part_l1(ws, f_s0)))
+        println("Initial  ‖f_s − f_p‖₂ = " * string(fs_minus_fp_l2))
+        neg_part = compute_negative_part_l1(ws, f_s0)
+        println("Initial  ∫max(−f_s,0) = " * string(neg_part))
     end
 
     v1 = copy(v_particles)
@@ -423,11 +422,15 @@ function run_simulation(p::SimParameters; resume=nothing)
         plot_fs_diagnostics(ws, f_coeffs, p.suffix, 0)
 
         cons_io = open(cons_csv, "w")
-        println(cons_io, "step,time,entropy,energy,momentum_1,momentum_2," *
-                         "iter,residual,fp_minus_fs,neg_part")
-        println(cons_io, "0,0.0,$(entropy_history[1]),$(energy_history[1])," *
-                         "$(momentum_history[1][1]),$(momentum_history[1][2])," *
-                         "0,0.0,0.0,0.0")
+        println(
+            cons_io, "step,time,entropy,energy,momentum_1,momentum_2," * "iter,residual,fp_minus_fs,neg_part"
+        )
+        println(
+            cons_io,
+            "0,0.0,$(entropy_history[1]),$(energy_history[1])," *
+            "$(momentum_history[1][1]),$(momentum_history[1][2])," *
+            "0,0.0,$fs_minus_fp_l2,$neg_part",
+        )
         flush(cons_io)
 
         snap_io = open(snap_csv, "w")
