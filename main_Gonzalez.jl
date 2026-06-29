@@ -28,6 +28,30 @@ using LinearAlgebra
 using LinearAlgebra: ldiv!, mul!
 
 
+# ---- rclone live upload -----------------------------------------------------
+# Mirror conservation CSV + fs snapshots to S3 as they are written, so a remote
+# machine can plot mid-run. Best-effort: failures warn, never abort the sim.
+#   RCLONE_UPLOAD=0  → disable entirely (default on)
+#   RCLONE_REMOTE=…  → override bucket dir (default: suffix with '_'→'-', i.e.
+#                      suffix `bimodal_v1` → mpcdf-s3://…/bimodal-v1)
+rclone_enabled() = get(ENV, "RCLONE_UPLOAD", "1") != "0"
+
+rclone_remote(suffix::String) =
+    get(ENV, "RCLONE_REMOTE",
+        "mpcdf-s3://collision-operators/" * replace(suffix, '_' => '-'))
+
+function rclone_upload(suffix::String, fname::String)
+    rclone_enabled() || return nothing
+    remote = rclone_remote(suffix)
+    try
+        run(`rclone copyto $fname $remote/$fname`)
+    catch e
+        @warn "rclone upload failed" fname remote exception=e
+    end
+    return nothing
+end
+
+
 # ---- Checkpoint / resume ----------------------------------------------------
 # Full simulation state serialized via stdlib `Serialization` (no extra deps).
 # Written at every snapshot step (≡ every 25 steps + final). On resume, the
@@ -296,6 +320,7 @@ function save_fs_snapshot(ws::Workspace, suffix::String, step::Int,
             println(io, c)
         end
     end
+    rclone_upload(suffix, fname)
     return fname
 end
 
@@ -525,6 +550,7 @@ function run_simulation(p::SimParameters; resume=nothing)
                          "$(momentum_history[1][1]),$(momentum_history[1][2])," *
                          "0,0.0,0.0,0.0")
         flush(cons_io)
+        rclone_upload(p.suffix, cons_csv)
 
         snap_io = open(snap_csv, "w")
         println(snap_io, "step,time,particle_idx,v1,v2")
@@ -605,6 +631,9 @@ function run_simulation(p::SimParameters; resume=nothing)
                             entropy_history, energy_history, momentum_history,
                             iter_history, res_history, fp_l2_history, neg_history,
                             copy(Random.default_rng()))
+            # Mirror the growing conservation CSV at snapshot cadence (not every
+            # step — that would spawn an rclone process per timestep).
+            rclone_upload(p.suffix, cons_csv)
         end
 
         step % 25 == 0 &&
@@ -619,6 +648,8 @@ function run_simulation(p::SimParameters; resume=nothing)
     # CSVs already streamed per-step / per-snapshot above. Just close.
     close(cons_io)
     close(snap_io)
+    # Final mirror so the last steps (if not a multiple of 25) reach S3 too.
+    rclone_upload(p.suffix, cons_csv)
     println("Saved $cons_csv")
     println("Saved $snap_csv")
 
