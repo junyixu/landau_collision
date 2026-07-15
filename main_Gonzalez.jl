@@ -27,6 +27,8 @@ using Serialization
 using LinearAlgebra
 using LinearAlgebra: ldiv!, mul!
 
+include("warmstart_nn.jl")
+
 
 # ---- rclone live upload -----------------------------------------------------
 # Mirror conservation CSV + fs snapshots to S3 as they are written, so a remote
@@ -221,7 +223,7 @@ function step_anderson!(ws::Workspace,
         if nrm_r < eff_tol
             v1 .= Gv
             verbose && println("    k=$k  ‖r‖=$nrm_r  history=$history  [converged]")
-            return k, nrm_r, n_restart
+            return k, nrm_r, n_restart, nrm_r0
         end
 
         # Stagnation early-exit: insufficient progress over a window of iters.
@@ -232,7 +234,7 @@ function step_anderson!(ws::Workspace,
                 v1 .= Gv_best
                 verbose && println("    k=$k  stagnated  nrm_best=$nrm_best  " *
                                    "Δ_rel=$rel_improve")
-                return k, nrm_best, n_restart
+                return k, nrm_best, n_restart, nrm_r0
             end
             nrm_best_window = nrm_best
         end
@@ -290,7 +292,7 @@ function step_anderson!(ws::Workspace,
     # max_iter exhausted: return best Gv (not the latest, which may be worse).
     v1 .= Gv_best
     @warn "Solver did not converge" max_iter tol abs_floor nrm_r0 nrm_r nrm_best n_restart
-    return max_iter, nrm_best, n_restart
+    return max_iter, nrm_best, n_restart, nrm_r0
 end
 
 
@@ -529,6 +531,16 @@ function run_simulation(p::SimParameters; resume=nothing)
     ΔF         = zeros(2 * p.N_PARTICLES, p.m_anderson)
     ΔG         = zeros(2 * p.N_PARTICLES, p.m_anderson)
 
+    # NN warm start (stateless — resume-safe without checkpoint changes).
+    p.warmstart in (:euler, :nn) || error("unknown warmstart=$(p.warmstart)")
+    nn_model = p.warmstart === :nn ? load_warmstart_model(p.nn_weights) : nothing
+
+    # Per-step training dump for the NN warm-start pipeline (crash-safe append).
+    dump_io = p.dump_training ?
+        open_training_dump("training_dump_$(p.suffix).bin",
+                           p.N_PARTICLES, ws.n_dofs, p.DT;
+                           append=(start_step > 0)) : nothing
+
     # Snapshot every 25 steps (plus final step if not already a multiple of 25).
     # Crash-safe: conservation + particles appended per-step / per-snapshot so a
     # killed run still leaves usable data through the last completed step.
@@ -545,10 +557,10 @@ function run_simulation(p::SimParameters; resume=nothing)
 
         cons_io = open(cons_csv, "w")
         println(cons_io, "step,time,entropy,energy,momentum_1,momentum_2," *
-                         "iter,residual,fp_minus_fs,neg_part")
+                         "iter,residual,fp_minus_fs,neg_part,r0")
         println(cons_io, "0,0.0,$(entropy_history[1]),$(energy_history[1])," *
                          "$(momentum_history[1][1]),$(momentum_history[1][2])," *
-                         "0,0.0,0.0,0.0")
+                         "0,0.0,0.0,0.0,0.0")
         flush(cons_io)
         rclone_upload(p.suffix, cons_csv)
 
@@ -580,7 +592,16 @@ function run_simulation(p::SimParameters; resume=nothing)
         compute_collision!(ws, dot_v, v_particles, w_particles, G)
         @. v1 = v_particles + p.DT * dot_v
 
-        iter, res_final, n_rs = step_anderson!(ws,
+        # Dump the pure pre-solve state (before any NN correction): the δ
+        # label is reconstructed offline from the next record's v.
+        dump_io !== nothing &&
+            write_dump_record(dump_io, step, v_particles, dot_v, G, L_vec)
+
+        nn_model !== nothing &&
+            nn_warmstart_correct!(v1, nn_model, v_particles, dot_v, G,
+                                  w_particles, ws.bp1, ws.bp2, p.DT)
+
+        iter, res_final, n_rs, r0_init = step_anderson!(ws,
                               v1, v_particles, w_particles, S0, p.DT,
                               v_mid, dv, dS_mid, G_eff, dot_v, f_buf,
                               r_vec, L_vec, G,
@@ -612,7 +633,7 @@ function run_simulation(p::SimParameters; resume=nothing)
             println(cons_io,
                 "$step,$t,$(entropy_history[end]),$(energy_history[end])," *
                 "$(P[1]),$(P[2]),$iter,$res_final," *
-                "$(fp_l2_history[end]),$(neg_history[end])")
+                "$(fp_l2_history[end]),$(neg_history[end]),$r0_init")
             flush(cons_io)
         end
 
@@ -646,6 +667,7 @@ function run_simulation(p::SimParameters; resume=nothing)
     end
 
     # CSVs already streamed per-step / per-snapshot above. Just close.
+    dump_io !== nothing && close(dump_io)
     close(cons_io)
     close(snap_io)
     # Final mirror so the last steps (if not a multiple of 25) reach S3 too.

@@ -59,6 +59,17 @@ Base.@kwdef struct SimParameters
     damp_decay_start::Int    = 200    # iter index after which damping is decayed
     damp_decay_factor::Float64 = 0.5  # damping multiplier once decay starts
 
+    # Warm start for the implicit solve: :euler = explicit Euler predictor
+    # (default, current behavior); :nn = Euler + Δt²·δ̂ MLP correction loaded
+    # from `nn_weights` (see warmstart_nn.jl).
+    warmstart::Symbol = :euler
+    nn_weights::String = ""
+
+    # Stream per-step training data (v, v̇, G, L_vec) to
+    # training_dump_<suffix>.bin (~1 MB/step at N=40k). Consumed by
+    # probe_delta_predictability.jl / train_warmstart.jl.
+    dump_training::Bool = false
+
     # Run identifier (used in output file names)
     suffix::String = "anderson"
 
@@ -86,6 +97,8 @@ function _coerce(::Type{T}, s::AbstractString) where {T}
         s in ("true", "1")  && return true
         s in ("false", "0") && return false
         error("Cannot parse $s as Bool")
+    elseif T === Symbol
+        return Symbol(s)
     elseif T <: AbstractString
         return String(s)
     elseif T <: AbstractVector
