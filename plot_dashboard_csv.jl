@@ -2,8 +2,8 @@
 # Replicates main_Gonzalez.jl plot_run_dashboard 7 panels.
 #   julia --project=. plot_dashboard_csv.jl <suffix> [out_suffix]
 # CSV cols: step,time,entropy,energy,momentum_1,momentum_2,iter,residual,fp_minus_fs,neg_part
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 length(ARGS) >= 1 || error("usage: plot_dashboard_csv.jl <suffix> [out_suffix]")
 suffix = ARGS[1]

@@ -1,7 +1,7 @@
 # Side-by-side v3 vs v4 step=100 zoom — measure honeycomb pitch vs mesh.
 # Hypothesis: if pitch tracks Δv₁ (v3=0.5, v4=0.333), it's cell-locking artifact.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 function load_step(csv, step)
     raw, _ = readdlm(csv, ',', Any, '\n'; header=true)

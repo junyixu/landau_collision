@@ -1,8 +1,8 @@
 # Compare stripe phase: v3 baseline vs v3_shift (+0.05 mesh shift) at step=100.
 # Prediction: if stripes lock to mesh+basis, phase v₀ shifts by +0.05.
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: mean
-GLMakie.activate!()
+CairoMakie.activate!()
 include("Parameters.jl")
 include("parameters_bpmesh40k_v3_800.jl"); p_base = PARAMS
 include("parameters_bpmesh40k_v3_shift.jl"); p_shift = PARAMS

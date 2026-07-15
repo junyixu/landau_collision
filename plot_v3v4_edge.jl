@@ -1,6 +1,6 @@
 # Edge honeycomb check: full domain v3 vs v4 step=100, focus outer ring.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 function load_step(csv, step)
     raw, _ = readdlm(csv, ',', Any, '\n'; header=true)

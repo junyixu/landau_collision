@@ -2,8 +2,8 @@
 # initial Gaussian density. Run as:
 #   julia --project=. plot_mesh.jl parameters_finemesh_anderson.jl
 # Outputs mesh_<suffix>.png.
-using GLMakie
-GLMakie.activate!()
+using CairoMakie
+CairoMakie.activate!()
 include("Parameters.jl")
 
 preset = isempty(ARGS) ? "parameters_finemesh_anderson.jl" : ARGS[1]

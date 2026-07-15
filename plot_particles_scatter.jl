@@ -3,8 +3,8 @@
 # Run as:
 #   julia --project=. plot_particles_scatter.jl <particle_csv> [preset.jl] [steps]
 # steps: comma-separated list, e.g. "0,200,400". Default "0,200,400".
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 include("Parameters.jl")
 
 length(ARGS) >= 1 || error("usage: plot_particles_scatter.jl <particle_csv> [preset.jl] [steps]")

@@ -4,8 +4,8 @@
 #   2) ‖G(v) − v‖₂ (fixed-point residual, Eq.104-105 of Jeyakumar et al.) vs step
 #   3) fs_diag PNG at step=100 (per-variant slice)
 # Columns: one per variant, header labels (P_DEG, bp1_inner, bp2_inner, seed, …).
-using GLMakie, DelimitedFiles, PNGFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles, PNGFiles
+CairoMakie.activate!()
 
 variants = [
     (id="v3_800",      P=2, bp1=17, bp2=26, seed=42, note=""),

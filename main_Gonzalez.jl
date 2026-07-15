@@ -21,7 +21,7 @@
 include("MantisWrappers.jl")
 using .MantisWrappers
 
-using GLMakie
+using CairoMakie
 using Random
 using Serialization
 using LinearAlgebra

@@ -1,9 +1,9 @@
 # Compare stripe at step=100, seed=42: P=2 (v3_800) vs P=3 (v3_P3).
 # Test prediction: deterministic projection residual A ∝ h^(P+1).
 # P=2 → h^3 = 0.008 baseline. P=3 → h^4 = 0.0016 → 5× drop if det-dominated.
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: mean
-GLMakie.activate!()
+CairoMakie.activate!()
 include("Parameters.jl")
 include("parameters_bpmesh40k_v3_800.jl"); p = PARAMS
 

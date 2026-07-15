@@ -1,7 +1,7 @@
 # Measure strip pitch — v4 step=100, zoom inner edge band, v₂ hist fine bins.
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: mean
-GLMakie.activate!()
+CairoMakie.activate!()
 
 include("Parameters.jl")
 include("parameters_bpmesh60k_v6.jl"); p = PARAMS

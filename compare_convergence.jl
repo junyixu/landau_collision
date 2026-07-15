@@ -7,8 +7,8 @@
 #   julia --project=. compare_convergence.jl <tag_A> <tag_B> [label_A] [label_B]
 #
 # Reads conservation_history_<tag>.csv (also tries archive_*/) for each tag.
-using GLMakie, DelimitedFiles, Statistics
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles, Statistics
+CairoMakie.activate!()
 
 length(ARGS) >= 2 || error("usage: compare_convergence.jl <tag_A> <tag_B> [label_A] [label_B]")
 tag_A = ARGS[1]

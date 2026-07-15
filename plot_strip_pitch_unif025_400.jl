@@ -1,9 +1,9 @@
 # Strip pitch ACF grid across unif025 long-horizon snapshots.
 # Track stripe amplitude growth/saturation. Δv₂=0.25 (uniform sparse).
 # Slab 3.0 ≤ v₁ ≤ 4.5 (outer band where stripes show up).
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: mean
-GLMakie.activate!()
+CairoMakie.activate!()
 include("Parameters.jl")
 include("parameters_bpmesh40k_v3_unif025.jl"); p = PARAMS
 

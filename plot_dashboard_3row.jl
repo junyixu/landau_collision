@@ -1,8 +1,8 @@
 # 3-row dashboard from conservation_history: H_h + energy/momentum rel. error.
 # Dedup keeps LAST occurrence per step (restart segments overlap).
 #   julia --project=. plot_dashboard_3row.jl [tag] [out_suffix]
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 # PPT-sized fonts
 update_theme!(

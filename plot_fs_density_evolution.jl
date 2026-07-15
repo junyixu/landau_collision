@@ -5,8 +5,8 @@
 # steps = comma-list (default "0,100,200,300").
 include("MantisWrappers.jl")
 using .MantisWrappers
-using GLMakie
-GLMakie.activate!()
+using CairoMakie
+CairoMakie.activate!()
 
 length(ARGS) >= 1 || error("usage: plot_fs_density_evolution.jl <tag> [dt] [steps]")
 tag = ARGS[1]

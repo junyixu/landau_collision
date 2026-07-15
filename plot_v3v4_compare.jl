@@ -1,8 +1,8 @@
 # Compare v3 (bp1 inner 17) vs v4 (bp1 inner 25) at 100-step horizon.
 # Two-panel: (a) per-step residual + iter, (b) neg_part growth.
 # Run: julia --project=. plot_v3v4_compare.jl
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 function load_csv(tag)
     raw, _ = readdlm("conservation_history_$(tag).csv", ',', Any, '\n'; header=true)

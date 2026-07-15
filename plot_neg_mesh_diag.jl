@@ -4,8 +4,8 @@
 #   julia --project=. plot_neg_mesh_diag.jl <tag> <step>
 include("MantisWrappers.jl")
 using .MantisWrappers
-using GLMakie
-GLMakie.activate!()
+using CairoMakie
+CairoMakie.activate!()
 
 tag  = ARGS[1]
 step = parse(Int, ARGS[2])

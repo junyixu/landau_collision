@@ -1,8 +1,8 @@
 # σ₁(t), σ₂(t) from particle snapshots — v4 vs v5 vs v6.
 # Expected: anisotropic relaxation toward σ_eq = √((σ₁²+σ₂²)/2) ≈ 1.007.
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: std, mean
-GLMakie.activate!()
+CairoMakie.activate!()
 
 function sigma_series(csv)
     raw, _ = readdlm(csv, ',', Any, '\n'; header=true)

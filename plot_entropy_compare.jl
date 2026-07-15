@@ -1,8 +1,8 @@
 # Compare entropy increase between two conservation_history CSVs.
 # Run as:
 #   julia --project=. plot_entropy_compare.jl <csv1> <label1> <csv2> <label2> [out.png]
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 length(ARGS) >= 4 || error("usage: plot_entropy_compare.jl csv1 label1 csv2 label2 [out]")
 csv1, lab1, csv2, lab2 = ARGS[1], ARGS[2], ARGS[3], ARGS[4]

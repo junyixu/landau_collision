@@ -1,6 +1,6 @@
 # Edge ring only v₂ hist — exclude bulk to expose strip pitch.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 function load_step(csv, step)
     raw, _ = readdlm(csv, ',', Any, '\n'; header=true)

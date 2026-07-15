@@ -1,9 +1,9 @@
 # Strip pitch ACF grid across v3_800 long-horizon snapshots.
 # Track stripe amplitude growth/saturation. Δv₂=0.2 (v3 sparse mesh).
 # Slab 3.0 ≤ v₁ ≤ 4.5 (outer band where stripes show up).
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: mean
-GLMakie.activate!()
+CairoMakie.activate!()
 include("Parameters.jl")
 include("parameters_bpmesh40k_v3_800.jl"); p = PARAMS
 

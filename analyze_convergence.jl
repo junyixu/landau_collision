@@ -6,8 +6,8 @@
 #   julia --project=. analyze_convergence.jl <tag>
 include("MantisWrappers.jl")
 using .MantisWrappers
-using GLMakie, DelimitedFiles, Statistics
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles, Statistics
+CairoMakie.activate!()
 
 length(ARGS) >= 1 || error("usage: analyze_convergence.jl <tag>")
 tag = ARGS[1]

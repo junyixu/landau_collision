@@ -1,6 +1,6 @@
 # v₂ 1D hist pitch test: if banding tracks bp2 Δv₂=0.2, sub-bin should show modulation.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 function load_step(csv, step)
     raw, _ = readdlm(csv, ',', Any, '\n'; header=true)

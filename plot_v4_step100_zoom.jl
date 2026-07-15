@@ -1,6 +1,6 @@
 # Zoom v4 step 100 scatter — check honeycomb pattern claim.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 include("Parameters.jl")
 include("parameters_bpmesh40k_v4.jl")
 p = PARAMS

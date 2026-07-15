@@ -1,7 +1,7 @@
 # Overlay neg-part L¹(step) for two conservation CSVs (same IC/mesh, differ only
 # in integrator). Usage: julia --project=. plot_neg_compare.jl <out.png> lbl1=csv1 lbl2=csv2 ...
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 out = ARGS[1]
 series = ARGS[2:end]

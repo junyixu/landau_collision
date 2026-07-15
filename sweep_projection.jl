@@ -3,7 +3,7 @@
 # Rows = N_ELEM values, Columns = N_PARTICLES values.
 
 using Mantis
-using GLMakie
+using CairoMakie
 using LinearAlgebra
 using Random
 

@@ -1,7 +1,7 @@
 # Plot S(t) for 10k vs 40k on same bp mesh (reconstructed from fs_snapshot when
 # conservation CSV missing). Sparse-point overlay since 40k only has 4 dumps.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 # columns: step,time,entropy
 function load(path)

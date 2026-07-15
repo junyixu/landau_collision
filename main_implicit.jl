@@ -7,7 +7,7 @@
 
 include("MantisWrappers.jl")
 using .MantisWrappers
-using GLMakie
+using CairoMakie
 using Random
 
 include("parameters.jl")

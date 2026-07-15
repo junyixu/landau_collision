@@ -1,9 +1,9 @@
 # σ₁(t), σ₂(t), σ₁/σ₂, T(t) across short (100-step) + long (800-step) runs.
 # Compare anisotropy relaxation horizon: 100 step (t=0.1) too short to see decay,
 # 800-step v3_800/v6_800 should reveal exponential decay toward σ_eq=1.007.
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: std
-GLMakie.activate!()
+CairoMakie.activate!()
 
 function sigma_series(csv)
     raw, _ = readdlm(csv, ',', Any, '\n'; header=true)

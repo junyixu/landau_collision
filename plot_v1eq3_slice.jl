@@ -1,6 +1,6 @@
 # v1 ≈ 3 narrow slice, full v2 — direct strip pitch read.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 include("Parameters.jl")
 include("parameters_bpmesh40k_v4.jl"); p = PARAMS

@@ -1,9 +1,9 @@
 # Compare stripe phase: seed=42 vs seed=43 at step=100, v3 mesh.
 # Test: if pure mesh effect, stripes locked to bp2 lines (seed-invariant).
 # If projection-variance, stripes shift phase but keep pitch.
-using GLMakie, DelimitedFiles
+using CairoMakie, DelimitedFiles
 using Statistics: mean
-GLMakie.activate!()
+CairoMakie.activate!()
 include("Parameters.jl")
 include("parameters_bpmesh40k_v3_800.jl"); p = PARAMS
 

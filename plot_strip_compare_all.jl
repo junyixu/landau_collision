@@ -1,8 +1,8 @@
 # Combined stripe-shape comparison at step=100 for every v3 variant probe.
 # One scatter panel per variant: v₂ in [-2.5,2.5], v₁ in [2.5,5.0] outer slab where
 # stripes are most visible. Overlay bp1 (vertical) and bp2 (horizontal) lines.
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 
 bp1_v3 = [-6.0; -5.0; collect(LinRange(-4.0, 4.0, 17)); 5.0; 6.0]
 bp2_v3 = [-6.0; collect(LinRange(-2.5,  2.5, 26)); 6.0]

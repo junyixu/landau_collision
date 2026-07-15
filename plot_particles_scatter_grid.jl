@@ -1,8 +1,8 @@
 # Grid scatter — full-domain only, square panels in N-col grid for readability.
 # Run as:
 #   julia --project=. plot_particles_scatter_grid.jl <particle_csv> [preset.jl] [steps] [ncol]
-using GLMakie, DelimitedFiles
-GLMakie.activate!()
+using CairoMakie, DelimitedFiles
+CairoMakie.activate!()
 include("Parameters.jl")
 
 length(ARGS) >= 1 || error("usage: plot_particles_scatter_grid.jl <particle_csv> [preset.jl] [steps] [ncol]")
